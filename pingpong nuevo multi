@@ -1,0 +1,142 @@
+// Obtener el canvas y el contexto
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+
+// Crear un objeto de jugador para el jugador local
+const player = {
+  id: "",
+  name: "",
+  leftPaddleY: canvas.height / 2 - paddleHeight / 2,
+ score: 0
+};
+
+// Conectarse al servidor websocket
+const socket = io.connect("http://localhost:3000");
+
+// Manejar el evento de conexión del jugador
+socket.on("connect", () => {
+  console.log("Conectado al servidor");
+  player.id = socket.id;
+  // Pedir al jugador que ingrese su nombre
+  const name = prompt("Ingresa tu nombre:");
+  player.name = name;
+  // Enviar el nombre del jugador al servidor
+  socket.emit("name", name);
+});
+
+// Manejar el evento de desconexión del jugador
+socket.on("disconnect", () => {
+  console.log("Desconectado del servidor");
+});
+
+// Manejar el evento de unirse a la sala de juego
+socket.on("playerJoin", player => {
+  console.log(`El jugador ${player.name} se ha unido a la sala`);
+  // Agregar el jugador a la lista de jugadores
+  players.push(player);
+});
+
+// Manejar el evento de salir de la sala de juego
+socket.on("playerLeave", player => {
+  console.log(`El jugador ${player.name} se ha desconectado`);
+  // Remover al jugador de la lista de jugadores
+  players = players.filter(p => p.id !== player.id);
+});
+
+// Manejar el evento de actualización de jugador
+socket.on("playerUpdate", player => {
+  // Actualizar la información del jugador en la lista de jugadores
+  const index = players.findIndex(p => p.id === player.id);
+  if (index !== -1) {
+    players[index] = player;
+  }
+});
+
+// Manejar el evento de inicio del juego
+socket.on("startGame", () => {
+  console.log("El juego ha comenzado");
+  // Iniciar el bucle del juego
+  gameLoop();
+});
+
+// Manejar el evento de movimiento de la raqueta del oponente
+socket.on("opponentPaddleMove", leftPaddleY => {
+  opponent.leftPaddleY = leftPaddleY;
+});
+
+// Manejar el evento de puntuación del oponente
+socket.on("opponentScore", score => {
+  opponent.score = score;
+});
+
+// Manejar el evento de final del juego
+socket.on("endGame", () => {
+  console.log("El juego ha terminado");
+  // Detener el bucle del juego
+  cancelAnimationFrame(animationId);
+});
+
+// Manejar el movimiento de la raqueta del jugador local
+function handlePaddleMovement() {
+  if (keys[87] && player.leftPaddleY > 0) {
+    player.leftPaddleY -= paddleSpeed;
+    // Enviar la posición de la raqueta al servidor
+    socket.emit("paddleMove", player.leftPaddleY);
+  } else if (keys[83] && player.leftPaddleY + paddleHeight < canvas.height) {
+    player.leftPaddleY += paddleSpeed;
+    // Enviar la posición de la raqueta al servidor
+    socket.emit("paddleMove", player.leftPaddleY);
+  }
+}
+
+// Actualizar la posición de la pelota y las raquetas en cada fotograma del juego
+function update() {
+  ballX += ballSpeedX;
+  ballY += ballSpeedY;
+  handlePaddleMovement();
+  handleCollisions();
+
+  // Enviar la posición de la pelota al servidor
+  socket.emit("ballMove", { x: ballX, y: ballY });
+
+  // Verificar si el jugador ha anotado
+  if (ballX - ballRadius <= 0) {
+    player.score++;
+    // Enviar la puntuación del jugador al servidor
+    socket.emit("score", player.score);
+    resetBall();
+  } else if (ballX + ballRadius >= canvas.width) {
+    opponent.score++;
+    // Enviar la puntuación del oponente al servidor
+    socket.emit("opponentScore", opponent.score);
+    resetBall();
+  }
+
+  // Enviar la posición de la raqueta del jugador local al servidor
+  socket.emit("paddleMove", player.leftPaddleY);
+}
+
+// Dibujar todo en el canvas
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  drawBall();
+  drawPaddles();
+  drawScore();
+
+  // Dibujar la raqueta del oponente
+  ctx.fillStyle = "black";
+  ctx.fillRect(canvas.width - paddleWidth, opponent.leftPaddleY, paddleWidth, paddleHeight);
+}
+
+// Iniciar el juego multijugador
+function startMultiplayerGame() {
+  // Pedir al servidor que comience el juego
+  socket.emit("startGame");
+}
+
+// Escuchar los eventos del teclado
+const keys = {};
+document.addEventListener("keydown", event => {
+  keys[event.keyCode] = true;
+});
+document.addEventListener("keyup", event
